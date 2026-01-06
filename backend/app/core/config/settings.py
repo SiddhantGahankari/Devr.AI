@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     github_token: str = ""
     discord_bot_token: str = ""
 
+    # Discord Bot Configuration
+    bot_owner_id: Optional[int] = None  # Discord user ID of the bot owner (for admin commands)
+
     # DB configuration
     supabase_url: str
     supabase_key: str
