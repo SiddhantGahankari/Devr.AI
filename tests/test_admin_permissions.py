@@ -1,246 +1,266 @@
-
-from backend.integrations.discord.permissions import (
-    is_bot_owner,
-    is_admin,
-    get_permission_embed,
-    check_permissions
-)
-from discord import Interaction, Member, Guild, User
-import discord
-from unittest.mock import Mock, patch
 import sys
 from pathlib import Path
+import asyncio
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import discord
+from discord import Interaction, Member, Guild, User
+from unittest.mock import Mock, AsyncMock, patch
 
-def create_mock_interaction(user_id=999999999, guild_id=987654321, command_name="test_command"):
-    """Create a mock Discord interaction."""
+from backend.integrations.discord.permissions import (
+    require_admin,
+    require_bot_owner,
+    get_permission_embed,
+)
+
+
+class MockCog:
+    def __init__(self):
+        self.bot = Mock()
+
+
+def create_mock_interaction(user_id=999999999, guild_id=987654321, command_name="test_command", is_admin_user=False):
     interaction = Mock(spec=Interaction)
     interaction.user = Mock(spec=User)
     interaction.user.id = user_id
+    interaction.user.name = "test_user"
+    
     interaction.guild = Mock(spec=Guild)
-    interaction.guild_id = guild_id
+    interaction.guild.id = guild_id
+    
+    member = Mock(spec=Member)
+    member.guild_permissions = Mock()
+    member.guild_permissions.administrator = is_admin_user
+    interaction.guild.get_member = Mock(return_value=member)
+    
     interaction.command = Mock()
     interaction.command.name = command_name
+    
     interaction.response = Mock()
     interaction.response.is_done = Mock(return_value=False)
-    interaction.response.send_message = Mock()
+    interaction.response.send_message = AsyncMock()
+    
     interaction.followup = Mock()
-    interaction.followup.send = Mock()
+    interaction.followup.send = AsyncMock()
+    
     return interaction
 
 
-def create_mock_admin_member():
-    """Create a mock member with administrator permissions."""
-    member = Mock(spec=Member)
-    member.guild_permissions = Mock()
-    member.guild_permissions.administrator = True
-    return member
-
-
-def create_mock_regular_member():
-    """Create a mock member without administrator permissions."""
-    member = Mock(spec=Member)
-    member.guild_permissions = Mock()
-    member.guild_permissions.administrator = False
-    return member
-
-
-# Test is_bot_owner function
-def test_bot_owner_returns_true():
-    with patch("backend.integrations.discord.permissions.settings") as mock_settings:
+async def test_admin_decorator_allows_administrator():
+    """Admin decorator should allow users with ADMINISTRATOR permission"""
+    with patch("backend.integrations.discord.permissions.settings") as mock_settings, \
+         patch("backend.integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+        
         mock_settings.bot_owner_id = 123456789
-        result = is_bot_owner(123456789)
-        assert result is True, "Bot owner should return True"
-        print("✓ test_bot_owner_returns_true")
+        
+        interaction = create_mock_interaction(user_id=999999999, is_admin_user=True)
+        cog = MockCog()
+        
+        called = False
+        
+        @require_admin
+        async def test_command(self, interaction: Interaction):
+            nonlocal called
+            called = True
+        
+        await test_command(cog, interaction)
+        
+        assert called, "Command should execute for admin user"
+        assert not interaction.response.send_message.called, "Should not send error message"
+        print("✓ test_admin_decorator_allows_administrator passed")
 
 
-def test_non_owner_returns_false():
-    with patch("backend.integrations.discord.permissions.settings") as mock_settings:
+async def test_admin_decorator_allows_bot_owner():
+    """Bot owner should pass through admin decorator"""
+    with patch("backend.integrations.discord.permissions.settings") as mock_settings, \
+         patch("backend.integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+        
         mock_settings.bot_owner_id = 123456789
-        result = is_bot_owner(999999999)
-        assert result is False, "Non-owner should return False"
-        print("✓ test_non_owner_returns_false")
+        
+        interaction = create_mock_interaction(user_id=123456789, is_admin_user=False)
+        cog = MockCog()
+        
+        called = False
+        
+        @require_admin
+        async def test_command(self, interaction: Interaction):
+            nonlocal called
+            called = True
+        
+        await test_command(cog, interaction)
+        
+        assert called, "Command should execute for bot owner"
+        assert not interaction.response.send_message.called, "Should not send error message"
+        print("✓ test_admin_decorator_allows_bot_owner passed")
 
 
-def test_no_bot_owner_configured():
-    with patch("backend.integrations.discord.permissions.settings") as mock_settings:
-        mock_settings.bot_owner_id = None
-        result = is_bot_owner(123456789)
-        assert result is False, "Should return False when owner not configured"
-        print("✓ test_no_bot_owner_configured")
+async def test_admin_decorator_denies_regular_user():
+    """Regular users should be denied by admin decorator"""
+    with patch("backend.integrations.discord.permissions.settings") as mock_settings, \
+         patch("backend.integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+        
+        mock_settings.bot_owner_id = 123456789
+        
+        interaction = create_mock_interaction(user_id=999999999, is_admin_user=False)
+        cog = MockCog()
+        
+        called = False
+        
+        @require_admin
+        async def test_command(self, interaction: Interaction):
+            nonlocal called
+            called = True
+        
+        await test_command(cog, interaction)
+        
+        assert not called, "Command should not execute"
+        assert interaction.response.send_message.called, "Should send error message"
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs["ephemeral"] is True
+        assert isinstance(call_kwargs["embed"], discord.Embed)
+        print("✓ test_admin_decorator_denies_regular_user passed")
 
 
-# Test is_admin function
-def test_admin_member_returns_true():
-    interaction = create_mock_interaction(user_id=111111111)
-    admin_member = create_mock_admin_member()
-    interaction.guild.get_member = Mock(return_value=admin_member)
-
-    result = is_admin(interaction)
-    assert result is True, "Admin member should return True"
-    print("✓ test_admin_member_returns_true")
-
-
-def test_regular_member_returns_false():
-    interaction = create_mock_interaction(user_id=222222222)
-    regular_member = create_mock_regular_member()
-    interaction.guild.get_member = Mock(return_value=regular_member)
-
-    result = is_admin(interaction)
-    assert result is False, "Regular member should return False"
-    print("✓ test_regular_member_returns_false")
-
-
-def test_no_guild_returns_false():
-    interaction = create_mock_interaction()
-    interaction.guild = None
-
-    result = is_admin(interaction)
-    assert result is False, "No guild should return False"
-    print("✓ test_no_guild_returns_false")
+async def test_bot_owner_decorator_denies_admin():
+    """Admin users without bot owner status should be denied"""
+    with patch("backend.integrations.discord.permissions.settings") as mock_settings, \
+         patch("backend.integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+        
+        mock_settings.bot_owner_id = 123456789
+        
+        interaction = create_mock_interaction(user_id=999999999, is_admin_user=True)
+        cog = MockCog()
+        
+        called = False
+        
+        @require_bot_owner
+        async def test_command(self, interaction: Interaction):
+            nonlocal called
+            called = True
+        
+        await test_command(cog, interaction)
+        
+        assert not called, "Command should not execute for non-owner"
+        assert interaction.response.send_message.called, "Should send error message"
+        print("✓ test_bot_owner_decorator_denies_admin passed")
 
 
-def test_member_not_found_returns_false():
-    interaction = create_mock_interaction()
-    interaction.guild.get_member = Mock(return_value=None)
+async def test_bot_owner_decorator_allows_owner():
+    """Bot owner should pass through bot owner decorator"""
+    with patch("backend.integrations.discord.permissions.settings") as mock_settings, \
+         patch("backend.integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+        
+        mock_settings.bot_owner_id = 123456789
+        
+        interaction = create_mock_interaction(user_id=123456789, is_admin_user=False)
+        cog = MockCog()
+        
+        called = False
+        
+        @require_bot_owner
+        async def test_command(self, interaction: Interaction):
+            nonlocal called
+            called = True
+        
+        await test_command(cog, interaction)
+        
+        assert called, "Command should execute for bot owner"
+        assert not interaction.response.send_message.called, "Should not send error message"
+        print("✓ test_bot_owner_decorator_allows_owner passed")
 
-    result = is_admin(interaction)
-    assert result is False, "Missing member should return False"
-    print("✓ test_member_not_found_returns_false")
+
+async def test_permission_check_logging():
+    """All permission checks should be logged to database"""
+    with patch("backend.integrations.discord.permissions.settings") as mock_settings, \
+         patch("backend.integrations.discord.permissions.log_admin_action", new_callable=AsyncMock) as mock_log:
+        
+        mock_settings.bot_owner_id = 123456789
+        
+        interaction = create_mock_interaction(user_id=999999999, is_admin_user=False, command_name="stats")
+        cog = MockCog()
+        
+        @require_admin
+        async def test_command(self, interaction: Interaction):
+            pass
+        
+        await test_command(cog, interaction)
+        
+        assert mock_log.called, "Should log permission check"
+        call_kwargs = mock_log.call_args.kwargs
+        assert call_kwargs["executor_id"] == "999999999"
+        assert call_kwargs["command_name"] == "stats"
+        assert call_kwargs["action_result"] == "failure"
+        assert "Permission denied" in call_kwargs["error_message"]
+        print("✓ test_permission_check_logging passed")
 
 
-# Test get_permission_embed function
-def test_default_embed_creation():
+def test_error_embed_generation():
+    """Error embeds should have helpful messages"""
     embed = get_permission_embed()
-
-    assert embed.title == "❌ Permission Denied", "Default title should match"
-    assert "don't have permission" in embed.description, "Default description should match"
-    assert embed.color == discord.Color.red(), "Color should be red"
-    assert len(embed.fields) == 2, "Should have 2 fields"
-    print("✓ test_default_embed_creation")
-
-
-def test_custom_embed_creation():
-    embed = get_permission_embed(
-        title="Custom Title",
-        description="Custom description",
-        required_permission="Custom Permission"
-    )
-
-    assert embed.title == "Custom Title", "Custom title should match"
-    assert embed.description == "Custom description", "Custom description should match"
-    assert "Custom Permission" in embed.fields[0].value, "Custom permission should be in field"
-    print("✓ test_custom_embed_creation")
+    
+    assert embed.title == "Permission Denied"
+    assert "don't have permission" in embed.description
+    assert embed.color == discord.Color.red()
+    assert len(embed.fields) >= 2
+    
+    required_field = embed.fields[0]
+    assert required_field.name == "Required Permission"
+    assert "Administrator" in required_field.value or "Bot Owner" in required_field.value
+    
+    contact_field = embed.fields[1]
+    assert contact_field.name == "Contact"
+    assert "bot owner" in contact_field.value.lower()
+    print("✓ test_error_embed_generation passed")
 
 
-# Test check_permissions function
-def test_check_permissions_bot_owner():
-    with patch("backend.integrations.discord.permissions.settings") as mock_settings:
-        mock_settings.bot_owner_id = 123456789
-
-        interaction = create_mock_interaction(user_id=123456789)
-        has_permission, reason = check_permissions(interaction)
-
-        assert has_permission is True, "Bot owner should have permission"
-        assert reason is None, "No reason for allowed access"
-        print("✓ test_check_permissions_bot_owner")
-
-
-def test_check_permissions_admin():
-    with patch("backend.integrations.discord.permissions.settings") as mock_settings:
-        mock_settings.bot_owner_id = 123456789
-
-        interaction = create_mock_interaction(user_id=999999999)
-        admin_member = create_mock_admin_member()
-        interaction.guild.get_member = Mock(return_value=admin_member)
-
-        has_permission, reason = check_permissions(interaction)
-
-        assert has_permission is True, "Admin should have permission"
-        assert reason is None, "No reason for allowed access"
-        print("✓ test_check_permissions_admin")
-
-
-def test_check_permissions_denied():
-    with patch("backend.integrations.discord.permissions.settings") as mock_settings:
-        mock_settings.bot_owner_id = 123456789
-
-        interaction = create_mock_interaction(user_id=999999999)
-        regular_member = create_mock_regular_member()
-        interaction.guild.get_member = Mock(return_value=regular_member)
-
-        has_permission, reason = check_permissions(interaction)
-
-        assert has_permission is False, "Regular user should be denied"
-        assert reason is not None, "Should have denial reason"
-        assert "neither bot owner nor server administrator" in reason, "Reason should explain denial"
-        print("✓ test_check_permissions_denied")
-
-
-# Run all tests
-def run_all_tests():
-    """Run all permission system tests."""
-    print("\n" + "="*50)
-    print("Permission System Tests")
-    print("="*50 + "\n")
-
-    tests = [
-        ("Bot Owner Checks", [
-            test_bot_owner_returns_true,
-            test_non_owner_returns_false,
-            test_no_bot_owner_configured,
-        ]),
-        ("Admin Checks", [
-            test_admin_member_returns_true,
-            test_regular_member_returns_false,
-            test_no_guild_returns_false,
-            test_member_not_found_returns_false,
-        ]),
-        ("Embed Generation", [
-            test_default_embed_creation,
-            test_custom_embed_creation,
-        ]),
-        ("Permission Checks", [
-            test_check_permissions_bot_owner,
-            test_check_permissions_admin,
-            test_check_permissions_denied,
-        ]),
+async def run_all_tests():
+    """Run all tests"""
+    print("\n" + "="*60)
+    print("Running Admin Permissions Tests")
+    print("="*60 + "\n")
+    
+    tests_passed = 0
+    tests_failed = 0
+    
+    test_functions = [
+        test_admin_decorator_allows_administrator,
+        test_admin_decorator_allows_bot_owner,
+        test_admin_decorator_denies_regular_user,
+        test_bot_owner_decorator_denies_admin,
+        test_bot_owner_decorator_allows_owner,
+        test_permission_check_logging,
     ]
-
-    total_tests = 0
-    failed_tests = []
-
-    for category, category_tests in tests:
-        print(f"{category}:")
-        for test in category_tests:
-            total_tests += 1
-            try:
-                test()
-            except AssertionError as e:
-                print(f"  ✗ {test.__name__}: {e}")
-                failed_tests.append((category, test.__name__, str(e)))
-            except Exception as e:
-                print(f"  ✗ {test.__name__}: Unexpected error - {e}")
-                failed_tests.append((category, test.__name__, f"Unexpected error: {e}"))
-        print()
-
-    print("="*50)
-    print(f"Results: {total_tests - len(failed_tests)}/{total_tests} tests passed")
-
-    if failed_tests:
-        print(f"\nFailed tests ({len(failed_tests)}):")
-        for category, test_name, error in failed_tests:
-            print(f"  [{category}] {test_name}: {error}")
-        print("="*50)
-        return False
-    else:
-        print("All tests passed! ✓")
-        print("="*50)
-        return True
+    
+    for test_func in test_functions:
+        try:
+            await test_func()
+            tests_passed += 1
+        except AssertionError as e:
+            tests_failed += 1
+            print(f"✗ {test_func.__name__} failed: {e}")
+        except Exception as e:
+            tests_failed += 1
+            print(f"✗ {test_func.__name__} error: {e}")
+    
+    # Run sync test
+    try:
+        test_error_embed_generation()
+        tests_passed += 1
+    except AssertionError as e:
+        tests_failed += 1
+        print(f"✗ test_error_embed_generation failed: {e}")
+    except Exception as e:
+        tests_failed += 1
+        print(f"✗ test_error_embed_generation error: {e}")
+    
+    print("\n" + "="*60)
+    print(f"Results: {tests_passed} passed, {tests_failed} failed")
+    print("="*60 + "\n")
+    
+    return tests_failed == 0
 
 
 if __name__ == "__main__":
-    success = run_all_tests()
-    exit(0 if success else 1)
+    success = asyncio.run(run_all_tests())
+    sys.exit(0 if success else 1)

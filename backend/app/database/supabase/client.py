@@ -1,4 +1,4 @@
-from app.core.config import settings
+from backend.app.core.config import settings
 from supabase._async.client import AsyncClient
 
 supabase_client: AsyncClient = AsyncClient(
