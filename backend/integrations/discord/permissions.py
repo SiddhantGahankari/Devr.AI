@@ -1,10 +1,12 @@
 from functools import wraps
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 import discord
 from discord import Interaction
 import logging
+import inspect
 
 from backend.app.core.config.settings import settings
+from backend.app.utils.admin_logger import log_admin_action
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,7 @@ def is_admin(interaction: Interaction) -> bool:
 
 
 def get_permission_embed(
-    title: str = "❌ Permission Denied",
+    title: str = "Permission Denied",
     description: str = "You don't have permission to use this command.",
     required_permission: str = "Administrator or Bot Owner"
 ) -> discord.Embed:
@@ -49,6 +51,20 @@ def require_admin(func):
                 f"reason={reason}"
             )
 
+            # Log failed permission check
+            await log_admin_action(
+                executor_id=str(interaction.user.id),
+                executor_username=interaction.user.name,
+                command_name=interaction.command.name if interaction.command else 'unknown',
+                server_id=str(interaction.guild.id) if interaction.guild else 'dm',
+                action_result='failure',
+                error_message=f"Permission denied: {reason}",
+                metadata={
+                    'is_owner': is_bot_owner(interaction.user.id),
+                    'is_admin': is_admin(interaction),
+                }
+            )
+
             embed = get_permission_embed()
 
             if interaction.response.is_done():
@@ -63,7 +79,56 @@ def require_admin(func):
             f"command={interaction.command.name if interaction.command else 'unknown'}"
         )
 
-        return await func(self, interaction, *args, **kwargs)
+        # Extract command arguments for logging
+        command_args = _extract_command_args(func, args, kwargs)
+
+        # Execute the command and track success/failure
+        action_result = 'success'
+        error_message = None
+        metadata = {
+            'is_owner': is_bot_owner(interaction.user.id),
+            'is_admin': is_admin(interaction),
+        }
+
+        try:
+            result = await func(self, interaction, *args, **kwargs)
+
+            # Log successful execution
+            await log_admin_action(
+                executor_id=str(interaction.user.id),
+                executor_username=interaction.user.name,
+                command_name=interaction.command.name if interaction.command else 'unknown',
+                server_id=str(interaction.guild.id) if interaction.guild else 'dm',
+                action_result=action_result,
+                command_args=command_args,
+                metadata=metadata
+            )
+
+            return result
+
+        except Exception as e:
+            action_result = 'error'
+            error_message = str(e)
+            logger.error(
+                f"Admin command error: user={interaction.user.id} "
+                f"command={interaction.command.name if interaction.command else 'unknown'} "
+                f"error={error_message}"
+            )
+
+            # Log error
+            await log_admin_action(
+                executor_id=str(interaction.user.id),
+                executor_username=interaction.user.name,
+                command_name=interaction.command.name if interaction.command else 'unknown',
+                server_id=str(interaction.guild.id) if interaction.guild else 'dm',
+                action_result=action_result,
+                command_args=command_args,
+                error_message=error_message,
+                metadata=metadata
+            )
+
+            # Re-raise the exception
+            raise
 
     return wrapper
 
@@ -77,8 +142,22 @@ def require_bot_owner(func):
                 f"command={interaction.command.name if interaction.command else 'unknown'}"
             )
 
+            # Log failed permission check
+            await log_admin_action(
+                executor_id=str(interaction.user.id),
+                executor_username=interaction.user.name,
+                command_name=interaction.command.name if interaction.command else 'unknown',
+                server_id=str(interaction.guild.id) if interaction.guild else 'dm',
+                action_result='failure',
+                error_message="Permission denied: Bot owner only",
+                metadata={
+                    'is_owner': False,
+                    'required_permission': 'bot_owner',
+                }
+            )
+
             embed = get_permission_embed(
-                title="❌ Bot Owner Only",
+                title="Bot Owner Only",
                 description="This command can only be used by the bot owner.",
                 required_permission="Bot Owner"
             )
@@ -94,7 +173,56 @@ def require_bot_owner(func):
             f"command={interaction.command.name if interaction.command else 'unknown'}"
         )
 
-        return await func(self, interaction, *args, **kwargs)
+        # Extract command arguments for logging
+        command_args = _extract_command_args(func, args, kwargs)
+
+        # Execute the command and track success/failure
+        action_result = 'success'
+        error_message = None
+        metadata = {
+            'is_owner': True,
+            'required_permission': 'bot_owner',
+        }
+
+        try:
+            result = await func(self, interaction, *args, **kwargs)
+
+            # Log successful execution
+            await log_admin_action(
+                executor_id=str(interaction.user.id),
+                executor_username=interaction.user.name,
+                command_name=interaction.command.name if interaction.command else 'unknown',
+                server_id=str(interaction.guild.id) if interaction.guild else 'dm',
+                action_result=action_result,
+                command_args=command_args,
+                metadata=metadata
+            )
+
+            return result
+
+        except Exception as e:
+            action_result = 'error'
+            error_message = str(e)
+            logger.error(
+                f"Bot owner command error: user={interaction.user.id} "
+                f"command={interaction.command.name if interaction.command else 'unknown'} "
+                f"error={error_message}"
+            )
+
+            # Log error
+            await log_admin_action(
+                executor_id=str(interaction.user.id),
+                executor_username=interaction.user.name,
+                command_name=interaction.command.name if interaction.command else 'unknown',
+                server_id=str(interaction.guild.id) if interaction.guild else 'dm',
+                action_result=action_result,
+                command_args=command_args,
+                error_message=error_message,
+                metadata=metadata
+            )
+
+            # Re-raise the exception
+            raise
 
     return wrapper
 
@@ -107,3 +235,40 @@ def check_permissions(interaction: Interaction) -> Tuple[bool, Optional[str]]:
         return True, None
 
     return False, f"User {interaction.user.id} is neither bot owner nor server administrator"
+
+
+def _extract_command_args(func, args: tuple, kwargs: dict) -> Dict[str, Any]:
+    """Extract command arguments from function call for logging."""
+    try:
+        sig = inspect.signature(func)
+        param_names = list(sig.parameters.keys())
+
+        # Skip 'self' and 'interaction' parameters
+        param_names = [p for p in param_names if p not in ['self', 'interaction']]
+
+        # Build argument dictionary
+        command_args = {}
+
+        # Add positional arguments (skip first two: self, interaction)
+        for i, value in enumerate(args[2:] if len(args) > 2 else []):
+            if i < len(param_names):
+                # Convert to string for JSON serialization
+                serializable_types = (str, int, float, bool, type(None))
+                command_args[param_names[i]] = (
+                    value if isinstance(value, serializable_types) else str(value)
+                )
+
+        # Add keyword arguments
+        for key, value in kwargs.items():
+            if key not in ['self', 'interaction']:
+                # Convert to string for JSON serialization
+                serializable_types = (str, int, float, bool, type(None))
+                command_args[key] = (
+                    value if isinstance(value, serializable_types) else str(value)
+                )
+
+        return command_args
+
+    except Exception as e:
+        logger.warning(f"Failed to extract command arguments: {e}")
+        return {}
