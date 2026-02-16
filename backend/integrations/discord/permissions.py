@@ -249,8 +249,8 @@ def _extract_command_args(func, args: tuple, kwargs: dict) -> Dict[str, Any]:
         # Build argument dictionary
         command_args = {}
 
-        # Add positional arguments (skip first two: self, interaction)
-        for i, value in enumerate(args[2:] if len(args) > 2 else []):
+        # Add positional arguments
+        for i, value in enumerate(args):
             if i < len(param_names):
                 # Convert to string for JSON serialization
                 serializable_types = (str, int, float, bool, type(None))

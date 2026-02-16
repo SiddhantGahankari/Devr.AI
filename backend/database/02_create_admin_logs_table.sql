@@ -39,7 +39,7 @@ CREATE POLICY "Authenticated users can view admin logs"
 CREATE POLICY "Service role can insert admin logs"
     ON admin_logs
     FOR INSERT
-    WITH CHECK (auth.role() = 'service_role' OR auth.role() = 'authenticated');
+    WITH CHECK (auth.role() = 'service_role');
 
 -- Add helpful comments
 COMMENT ON TABLE admin_logs IS 'Tracks all admin command executions for audit trail';

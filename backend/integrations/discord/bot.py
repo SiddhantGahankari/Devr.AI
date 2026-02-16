@@ -39,14 +39,16 @@ class DiscordBot(commands.Bot):
         logger.info(f'Bot is ready! Logged in as {self.user}')
         try:
             # Sync globally
-            synced = await self.tree.sync()
-            logger.info(f"Synced {len(synced)} global slash command(s)")
+            synced = await self.sync_commands()
+            synced_count = len(synced) if synced is not None else 0
+            logger.info(f"Synced {synced_count} global slash command(s)")
 
             # Also sync to each guild for instant availability
             for guild in self.guilds:
                 try:
-                    guild_synced = await self.tree.sync(guild=guild)
-                    logger.info(f"Synced {len(guild_synced)} commands to guild {guild.name}")
+                    guild_synced = await self.sync_commands(guild_ids=[guild.id])
+                    guild_synced_count = len(guild_synced) if guild_synced is not None else 0
+                    logger.info(f"Synced {guild_synced_count} commands to guild {guild.name}")
                 except Exception as e:
                     logger.warning(f"Failed to sync to guild {guild.name}: {e}")
         except Exception as e:

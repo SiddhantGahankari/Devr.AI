@@ -164,22 +164,62 @@ async def get_admin_log_stats(
     try:
         supabase = get_supabase_client()
 
-        # Build base query
-        query = supabase.table("admin_logs").select("*")
+        # Paginate through matching logs to avoid unbounded result sets
+        batch_size = 1000
+        offset = 0
 
-        if server_id:
-            query = query.eq("server_id", server_id)
+        total_commands = 0
+        success_count = 0
+        failure_count = 0
+        error_count = 0
+        commands_by_type: Dict[str, int] = {}
+        executor_counts: Dict[str, int] = {}
 
-        if start_time:
-            query = query.gte("timestamp", start_time.isoformat())
+        while True:
+            query = supabase.table("admin_logs").select(
+                "command_name,action_result,executor_username"
+            )
 
-        if end_time:
-            query = query.lte("timestamp", end_time.isoformat())
+            if server_id:
+                query = query.eq("server_id", server_id)
 
-        # Get all matching logs
-        response = await query.execute()
+            if start_time:
+                query = query.gte("timestamp", start_time.isoformat())
 
-        if not response.data:
+            if end_time:
+                query = query.lte("timestamp", end_time.isoformat())
+
+            query = query.order("timestamp", desc=True).range(offset, offset + batch_size - 1)
+
+            response = await query.execute()
+            logs = response.data or []
+
+            if not logs:
+                break
+
+            total_commands += len(logs)
+
+            for log in logs:
+                action_result = log.get("action_result")
+                if action_result == "success":
+                    success_count += 1
+                elif action_result == "failure":
+                    failure_count += 1
+                elif action_result == "error":
+                    error_count += 1
+
+                cmd = log.get("command_name") or "unknown"
+                commands_by_type[cmd] = commands_by_type.get(cmd, 0) + 1
+
+                executor = log.get("executor_username") or "unknown"
+                executor_counts[executor] = executor_counts.get(executor, 0) + 1
+
+            if len(logs) < batch_size:
+                break
+
+            offset += batch_size
+
+        if total_commands == 0:
             return {
                 "total_commands": 0,
                 "success_count": 0,
@@ -188,26 +228,6 @@ async def get_admin_log_stats(
                 "commands_by_type": {},
                 "top_executors": [],
             }
-
-        logs = response.data
-
-        # Calculate statistics
-        total_commands = len(logs)
-        success_count = sum(1 for log in logs if log["action_result"] == "success")
-        failure_count = sum(1 for log in logs if log["action_result"] == "failure")
-        error_count = sum(1 for log in logs if log["action_result"] == "error")
-
-        # Count commands by type
-        commands_by_type = {}
-        for log in logs:
-            cmd = log["command_name"]
-            commands_by_type[cmd] = commands_by_type.get(cmd, 0) + 1
-
-        # Count by executor
-        executor_counts = {}
-        for log in logs:
-            executor = log["executor_username"]
-            executor_counts[executor] = executor_counts.get(executor, 0) + 1
 
         # Sort executors by count
         top_executors = [

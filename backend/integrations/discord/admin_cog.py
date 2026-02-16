@@ -73,8 +73,8 @@ class AdminCommands(commands.GroupCog, name="admin"):
 
         return True
 
-    async def cog_command_error(self, interaction: Interaction, error: Exception):
-        """Handle errors for admin commands."""
+    async def cog_app_command_error(self, interaction: Interaction, error: Exception):
+        """Handle errors for admin slash commands."""
         logger.error(f"Admin command error: {error}", exc_info=True)
 
         if isinstance(error, app_commands.MissingPermissions):
