@@ -1,12 +1,11 @@
+import asyncio
+from unittest.mock import Mock, AsyncMock, patch
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
-
-from unittest.mock import Mock, AsyncMock, patch
-import asyncio
 
 
 async def test_full_workflow():
@@ -24,7 +23,7 @@ async def test_full_workflow():
     queue_service = QueueService(None)
 
     with patch.object(stats_service, 'get_message_stats', new_callable=AsyncMock) as m1, \
-         patch.object(stats_service, 'get_queue_stats', new_callable=AsyncMock) as m2:
+            patch.object(stats_service, 'get_queue_stats', new_callable=AsyncMock) as m2:
         m1.return_value = {"today": 5, "week": 20}
         m2.return_value = {"high": 0, "medium": 0, "low": 0}
 
@@ -32,10 +31,10 @@ async def test_full_workflow():
         assert stats.guild_count == 1
 
     with patch.object(health_service, 'check_supabase', new_callable=AsyncMock) as h1, \
-         patch.object(health_service, 'check_rabbitmq', new_callable=AsyncMock) as h2, \
-         patch.object(health_service, 'check_weaviate', new_callable=AsyncMock) as h3, \
-         patch.object(health_service, 'check_falkordb', new_callable=AsyncMock) as h4, \
-         patch.object(health_service, 'check_gemini_api', new_callable=AsyncMock) as h5:
+            patch.object(health_service, 'check_rabbitmq', new_callable=AsyncMock) as h2, \
+            patch.object(health_service, 'check_weaviate', new_callable=AsyncMock) as h3, \
+            patch.object(health_service, 'check_falkordb', new_callable=AsyncMock) as h4, \
+            patch.object(health_service, 'check_gemini_api', new_callable=AsyncMock) as h5:
 
         h1.return_value = ServiceHealth("Supabase", "healthy", 10)
         h2.return_value = ServiceHealth("RabbitMQ", "healthy", 5)
@@ -64,7 +63,7 @@ async def test_permission_denies_regular_user():
     from integrations.discord.permissions import require_admin
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
 
         mock_settings.bot_owner_id = 123456789
 
@@ -108,7 +107,7 @@ async def test_permission_allows_admin():
     from integrations.discord.permissions import require_admin
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
 
         mock_settings.bot_owner_id = 123456789
 
@@ -150,7 +149,7 @@ async def test_logging_works():
     from integrations.discord.permissions import require_admin
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock) as mock_log:
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock) as mock_log:
 
         mock_settings.bot_owner_id = 123456789
 

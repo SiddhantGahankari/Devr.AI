@@ -1,12 +1,11 @@
+import asyncio
+from unittest.mock import Mock, AsyncMock, patch
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
-
-from unittest.mock import Mock, AsyncMock, patch
-import asyncio
 
 
 async def test_stats_service():
@@ -20,7 +19,7 @@ async def test_stats_service():
     service = BotStatsService(mock_bot, None)
 
     with patch.object(service, 'get_message_stats', new_callable=AsyncMock) as mock_msg, \
-         patch.object(service, 'get_queue_stats', new_callable=AsyncMock) as mock_queue:
+            patch.object(service, 'get_queue_stats', new_callable=AsyncMock) as mock_queue:
         mock_msg.return_value = {"today": 10, "week": 50}
         mock_queue.return_value = {"high": 1, "medium": 2, "low": 3}
 
@@ -56,10 +55,10 @@ async def test_health_all_healthy():
     service = HealthCheckService(None)
 
     with patch.object(service, 'check_supabase', new_callable=AsyncMock) as m1, \
-         patch.object(service, 'check_rabbitmq', new_callable=AsyncMock) as m2, \
-         patch.object(service, 'check_weaviate', new_callable=AsyncMock) as m3, \
-         patch.object(service, 'check_falkordb', new_callable=AsyncMock) as m4, \
-         patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m5:
+            patch.object(service, 'check_rabbitmq', new_callable=AsyncMock) as m2, \
+            patch.object(service, 'check_weaviate', new_callable=AsyncMock) as m3, \
+            patch.object(service, 'check_falkordb', new_callable=AsyncMock) as m4, \
+            patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m5:
 
         m1.return_value = ServiceHealth("Supabase", "healthy", 10)
         m2.return_value = ServiceHealth("RabbitMQ", "healthy", 5)
@@ -80,10 +79,10 @@ async def test_health_service_down():
     service = HealthCheckService(None)
 
     with patch.object(service, 'check_supabase', new_callable=AsyncMock) as m1, \
-         patch.object(service, 'check_rabbitmq', new_callable=AsyncMock) as m2, \
-         patch.object(service, 'check_weaviate', new_callable=AsyncMock) as m3, \
-         patch.object(service, 'check_falkordb', new_callable=AsyncMock) as m4, \
-         patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m5:
+            patch.object(service, 'check_rabbitmq', new_callable=AsyncMock) as m2, \
+            patch.object(service, 'check_weaviate', new_callable=AsyncMock) as m3, \
+            patch.object(service, 'check_falkordb', new_callable=AsyncMock) as m4, \
+            patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m5:
 
         m1.return_value = ServiceHealth("Supabase", "unhealthy", 0, "Connection failed")
         m2.return_value = ServiceHealth("RabbitMQ", "healthy", 5)
@@ -118,8 +117,8 @@ async def test_user_info_verified():
     mock_member.roles = [Mock(), Mock(), Mock()]
 
     with patch.object(service, 'get_user_profile', new_callable=AsyncMock) as m1, \
-         patch.object(service, 'get_user_message_count', new_callable=AsyncMock) as m2, \
-         patch.object(service, 'get_last_message', new_callable=AsyncMock) as m3:
+            patch.object(service, 'get_user_message_count', new_callable=AsyncMock) as m2, \
+            patch.object(service, 'get_last_message', new_callable=AsyncMock) as m3:
 
         m1.return_value = {"is_verified": True, "github_username": "testuser_gh"}
         m2.return_value = 42
@@ -151,8 +150,8 @@ async def test_user_info_unverified():
     mock_user.created_at.strftime = Mock(return_value="2024-01-01")
 
     with patch.object(service, 'get_user_profile', new_callable=AsyncMock) as m1, \
-         patch.object(service, 'get_user_message_count', new_callable=AsyncMock) as m2, \
-         patch.object(service, 'get_last_message', new_callable=AsyncMock) as m3:
+            patch.object(service, 'get_user_message_count', new_callable=AsyncMock) as m2, \
+            patch.object(service, 'get_last_message', new_callable=AsyncMock) as m3:
 
         m1.return_value = None
         m2.return_value = 0

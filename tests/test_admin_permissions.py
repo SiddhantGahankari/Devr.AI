@@ -1,13 +1,12 @@
+import asyncio
+import discord
+from unittest.mock import Mock, AsyncMock, patch
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
-
-from unittest.mock import Mock, AsyncMock, patch
-import discord
-import asyncio
 
 
 class MockCog:
@@ -46,7 +45,7 @@ async def test_admin_decorator_allows_administrator():
     from integrations.discord.permissions import require_admin
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
 
         mock_settings.bot_owner_id = 123456789
         interaction = create_mock_interaction(user_id=999999999, is_admin_user=True)
@@ -69,7 +68,7 @@ async def test_admin_decorator_allows_bot_owner():
     from integrations.discord.permissions import require_admin
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
 
         mock_settings.bot_owner_id = 123456789
         interaction = create_mock_interaction(user_id=123456789, is_admin_user=False)
@@ -92,7 +91,7 @@ async def test_admin_decorator_denies_regular_user():
     from integrations.discord.permissions import require_admin
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
 
         mock_settings.bot_owner_id = 123456789
         interaction = create_mock_interaction(user_id=999999999, is_admin_user=False)
@@ -116,7 +115,7 @@ async def test_bot_owner_decorator_denies_admin():
     from integrations.discord.permissions import require_bot_owner
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
 
         mock_settings.bot_owner_id = 123456789
         interaction = create_mock_interaction(user_id=999999999, is_admin_user=True)
@@ -139,7 +138,7 @@ async def test_bot_owner_decorator_allows_owner():
     from integrations.discord.permissions import require_bot_owner
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock):
 
         mock_settings.bot_owner_id = 123456789
         interaction = create_mock_interaction(user_id=123456789, is_admin_user=False)
@@ -162,7 +161,7 @@ async def test_permission_check_logging():
     from integrations.discord.permissions import require_admin
 
     with patch("integrations.discord.permissions.settings") as mock_settings, \
-         patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock) as mock_log:
+            patch("integrations.discord.permissions.log_admin_action", new_callable=AsyncMock) as mock_log:
 
         mock_settings.bot_owner_id = 123456789
         interaction = create_mock_interaction(user_id=999999999, is_admin_user=False, command_name="stats")

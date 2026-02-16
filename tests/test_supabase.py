@@ -1,3 +1,7 @@
+from datetime import datetime  # Your User model import
+from app.database.supabase.client import get_supabase_client
+from uuid import uuid4
+from app.models.database.supabase import User, Interaction, CodeChunk, Repository
 import sys
 from pathlib import Path
 
@@ -5,10 +9,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.models.database.supabase import User, Interaction, CodeChunk, Repository
-from uuid import uuid4
-from app.database.supabase.client import get_supabase_client
-from datetime import datetime  # Your User model import
 
 client = get_supabase_client()
 

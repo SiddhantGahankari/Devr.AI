@@ -1,16 +1,15 @@
+from app.models.database.weaviate import (
+    WeaviateUserProfile,
+)
+from uuid import uuid4
+from datetime import datetime
+from app.database.weaviate.client import get_client
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
-
-from app.database.weaviate.client import get_client
-from datetime import datetime
-from uuid import uuid4
-from app.models.database.weaviate import (
-    WeaviateUserProfile,
-)
 
 
 def test_weaviate_client():
