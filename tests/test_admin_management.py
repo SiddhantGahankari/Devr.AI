@@ -1,12 +1,12 @@
+import asyncio
+from unittest.mock import Mock, AsyncMock, patch
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from unittest.mock import Mock, AsyncMock, patch
-import asyncio
 
-
+print(Path(__file__).parent.parent / "backend" / "app" / "services" / "admin" / "queue_service.py")
 async def test_queue_status():
     from app.services.admin.queue_service import QueueService, FullQueueStatus, QueueStats
 

@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import uuid
 
-from backend.app.database.supabase.client import get_supabase_client
+from app.database.supabase.client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 

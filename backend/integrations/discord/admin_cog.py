@@ -6,6 +6,14 @@ from discord.ext import commands
 from integrations.discord.bot import DiscordBot
 from integrations.discord.permissions import require_admin
 from app.core.orchestration.queue_manager import AsyncQueueManager
+from app.services.admin import (
+    BotStatsService,
+    HealthCheckService,
+    UserInfoService,
+    QueueService,
+    CacheService,
+    UserManagementService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +24,12 @@ class AdminCommands(commands.GroupCog, name="admin"):
     def __init__(self, bot: DiscordBot, queue_manager: AsyncQueueManager):
         self.bot = bot
         self.queue = queue_manager
+        self.stats_service = BotStatsService(bot=bot, queue_manager=queue_manager)
+        self.health_service = HealthCheckService(queue_manager=queue_manager)
+        self.user_info_service = UserInfoService(bot=bot)
+        self.queue_service = QueueService(queue_manager=queue_manager)
+        self.cache_service = CacheService(bot=bot)
+        self.user_management_service = UserManagementService(bot=bot, queue_manager=queue_manager)
         super().__init__()
 
     async def cog_command_error(self, interaction: Interaction, error: Exception):
@@ -44,16 +58,26 @@ class AdminCommands(commands.GroupCog, name="admin"):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            guild_count = len(self.bot.guilds)
-            total_members = sum(guild.member_count or 0 for guild in self.bot.guilds)
-            active_threads = len(self.bot.active_threads)
+            stats = await self.stats_service.get_all_stats()
 
             embed = discord.Embed(title="Bot Statistics", color=discord.Color.blue())
-            embed.add_field(name="Servers", value=str(guild_count), inline=True)
-            embed.add_field(name="Total Members", value=str(total_members), inline=True)
-            embed.add_field(name="Active Threads", value=str(active_threads), inline=True)
-            embed.add_field(name="Latency", value=f"{round(self.bot.latency * 1000)}ms", inline=True)
-            embed.set_footer(text="More detailed stats coming soon")
+            embed.add_field(name="Servers", value=str(stats.guild_count), inline=True)
+            embed.add_field(name="Total Members", value=str(stats.total_members), inline=True)
+            embed.add_field(name="Active Threads", value=str(stats.active_threads), inline=True)
+            embed.add_field(name="Latency", value=f"{stats.latency_ms}ms", inline=True)
+            embed.add_field(name="Memory Usage", value=f"{stats.memory_mb} MB", inline=True)
+            embed.add_field(name="Uptime", value=f"{int(stats.uptime_seconds)}s", inline=True)
+            embed.add_field(name="Messages Today", value=str(stats.messages_today), inline=True)
+            embed.add_field(name="Messages (7d)", value=str(stats.messages_week), inline=True)
+            embed.add_field(
+                name="Queue",
+                value=(
+                    f"High: {stats.queue_high}\n"
+                    f"Medium: {stats.queue_medium}\n"
+                    f"Low: {stats.queue_low}"
+                ),
+                inline=False,
+            )
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -68,11 +92,40 @@ class AdminCommands(commands.GroupCog, name="admin"):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            # TODO: Add actual health checks for Supabase, Weaviate, RabbitMQ, etc
-            embed = discord.Embed(title="System Health", color=discord.Color.green())
-            embed.add_field(name="Discord API", value="Healthy", inline=True)
-            embed.add_field(name="Bot Status", value="Running", inline=True)
-            embed.set_footer(text="Full service checks coming in next update")
+            health = await self.health_service.get_all_health()
+
+            status_color = {
+                "healthy": discord.Color.green(),
+                "degraded": discord.Color.orange(),
+                "unhealthy": discord.Color.red(),
+            }
+            status_emoji = {
+                "healthy": "✅",
+                "degraded": "⚠️",
+                "unhealthy": "❌",
+            }
+
+            embed = discord.Embed(
+                title="System Health",
+                color=status_color.get(health.overall_status, discord.Color.orange()),
+            )
+            embed.add_field(
+                name="Overall",
+                value=f"{status_emoji.get(health.overall_status, '⚠️')} {health.overall_status.title()}",
+                inline=False,
+            )
+
+            for service in health.services:
+                details = f"{service.latency_ms}ms"
+                if service.error:
+                    details += f"\n{service.error}"
+                embed.add_field(
+                    name=f"{status_emoji.get(service.status, '⚠️')} {service.name}",
+                    value=details,
+                    inline=True,
+                )
+
+            embed.set_footer(text=f"Checked at {health.timestamp}")
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -89,20 +142,19 @@ class AdminCommands(commands.GroupCog, name="admin"):
 
         try:
             member = interaction.guild.get_member(user.id) if interaction.guild else None
-            created = user.created_at.strftime("%Y-%m-%d")
+            info = await self.user_info_service.get_full_user_info(user, member)
 
             embed = discord.Embed(title="User Information", color=discord.Color.blue())
             embed.set_thumbnail(url=user.display_avatar.url)
-            embed.add_field(name="Username", value=user.name, inline=True)
-            embed.add_field(name="ID", value=str(user.id), inline=True)
-            embed.add_field(name="Created", value=created, inline=True)
-
-            if member:
-                embed.add_field(name="Nickname", value=member.display_name or "None", inline=True)
-                embed.add_field(name="Roles", value=str(len(member.roles) - 1), inline=True)
-
-            # TODO: Add verification status, message count, etc from database
-            embed.set_footer(text="More details coming soon")
+            embed.add_field(name="Username", value=info.discord_username, inline=True)
+            embed.add_field(name="ID", value=info.discord_id, inline=True)
+            embed.add_field(name="Created", value=info.created_at, inline=True)
+            embed.add_field(name="Verified", value="Yes" if info.is_verified else "No", inline=True)
+            embed.add_field(name="GitHub", value=info.github_username or "Not linked", inline=True)
+            embed.add_field(name="Messages", value=str(info.message_count), inline=True)
+            embed.add_field(name="Active Thread", value="Yes" if info.has_active_thread else "No", inline=True)
+            embed.add_field(name="Roles", value=str(info.roles_count), inline=True)
+            embed.add_field(name="Last Message", value=info.last_message_at or "Never", inline=False)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -134,21 +186,26 @@ class AdminCommands(commands.GroupCog, name="admin"):
             return
 
         try:
-            # TODO: Implement actual reset logic with confirmation dialog
-            actions = []
-            if reset_memory:
-                actions.append("memory")
-            if reset_thread:
-                actions.append("thread")
-            if reset_verification:
-                actions.append("verification")
+            result = await self.user_management_service.reset_user(
+                user_id=str(user.id),
+                reset_memory=reset_memory,
+                reset_thread=reset_thread,
+                reset_verification=reset_verification,
+            )
+
+            success = len(result.errors) == 0
 
             embed = discord.Embed(
-                title="User Reset",
-                description=f"Would reset {', '.join(actions)} for {user.mention}",
-                color=discord.Color.orange()
+                title="User Reset Complete" if success else "User Reset Completed with Issues",
+                description=f"Target: {user.mention}",
+                color=discord.Color.green() if success else discord.Color.orange(),
             )
-            embed.set_footer(text="Need to add confirmation dialog first")
+            embed.add_field(name="Memory Cleared", value="Yes" if result.memory_cleared else "No", inline=True)
+            embed.add_field(name="Thread Closed", value="Yes" if result.thread_closed else "No", inline=True)
+            embed.add_field(name="Verification Reset", value="Yes" if result.verification_reset else "No", inline=True)
+
+            if result.errors:
+                embed.add_field(name="Errors", value="\n".join(result.errors), inline=False)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -163,12 +220,36 @@ class AdminCommands(commands.GroupCog, name="admin"):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            # TODO: Get actual queue stats from RabbitMQ
+            status = await self.queue_service.get_queue_stats()
+
+            total = status.total_pending
+            if total == 0:
+                color = discord.Color.green()
+            elif total < 10:
+                color = discord.Color.blue()
+            elif total < 50:
+                color = discord.Color.orange()
+            else:
+                color = discord.Color.red()
+
             embed = discord.Embed(title="Queue Status", color=discord.Color.blue())
-            embed.add_field(name="High", value="0 pending", inline=True)
-            embed.add_field(name="Medium", value="0 pending", inline=True)
-            embed.add_field(name="Low", value="0 pending", inline=True)
-            embed.set_footer(text="Need to wire up RabbitMQ stats")
+            embed.color = color
+            embed.add_field(
+                name="High",
+                value=f"{status.high.pending} pending\n{status.high.consumers} consumers",
+                inline=True,
+            )
+            embed.add_field(
+                name="Medium",
+                value=f"{status.medium.pending} pending\n{status.medium.consumers} consumers",
+                inline=True,
+            )
+            embed.add_field(
+                name="Low",
+                value=f"{status.low.pending} pending\n{status.low.consumers} consumers",
+                inline=True,
+            )
+            embed.add_field(name="Total Pending", value=str(status.total_pending), inline=False)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -190,14 +271,19 @@ class AdminCommands(commands.GroupCog, name="admin"):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            # TODO: Add confirmation buttons before actually clearing
+            cleared = await self.queue_service.clear_queue(priority=priority)
+            total = sum(cleared.values())
+
             embed = discord.Embed(
-                title="Queue Clear",
-                description=f"This would clear {priority} priority queue(s).",
-                color=discord.Color.orange()
+                title="Queue Cleared",
+                description=f"Cleared queue scope: {priority}",
+                color=discord.Color.orange(),
             )
-            embed.add_field(name="Warning", value="Can't undo this. Need confirmation dialog first.", inline=False)
-            
+            embed.add_field(name="High", value=str(cleared.get("high", 0)), inline=True)
+            embed.add_field(name="Medium", value=str(cleared.get("medium", 0)), inline=True)
+            embed.add_field(name="Low", value=str(cleared.get("low", 0)), inline=True)
+            embed.add_field(name="Total Cleared", value=str(total), inline=False)
+
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception as e:
@@ -208,6 +294,7 @@ class AdminCommands(commands.GroupCog, name="admin"):
     @app_commands.describe(cache_type="What to clear")
     @app_commands.choices(cache_type=[
         app_commands.Choice(name="All", value="all"),
+        app_commands.Choice(name="Active Threads", value="active_threads"),
         app_commands.Choice(name="Embeddings", value="embeddings"),
         app_commands.Choice(name="Memories", value="memories")
     ])
@@ -217,13 +304,15 @@ class AdminCommands(commands.GroupCog, name="admin"):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            # TODO: Implement actual cache clearing
+            cleared = await self.cache_service.clear_cache(cache_type=cache_type)
+
             embed = discord.Embed(
                 title="Cache Clear",
-                description=f"Would clear {cache_type} cache.",
-                color=discord.Color.blue()
+                description=f"Cleared cache type: {cache_type}",
+                color=discord.Color.blue(),
             )
-            embed.set_footer(text="Still need to implement this")
+            for name, count in cleared.items():
+                embed.add_field(name=name.replace("_", " ").title(), value=str(count), inline=True)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 

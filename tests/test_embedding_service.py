@@ -1,7 +1,7 @@
 import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from backend.app.services.embedding_service.service import EmbeddingService
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
+from app.services.embedding_service.service import EmbeddingService
 import unittest
 from sklearn.metrics.pairwise import cosine_similarity
 
