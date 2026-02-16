@@ -27,6 +27,21 @@ class UserInfoService:
     def __init__(self, bot=None):
         self.bot = bot
 
+    async def _get_internal_user_id(self, discord_id: str) -> Optional[str]:
+        """Resolve internal users.id UUID from a Discord snowflake ID."""
+        try:
+            supabase = get_supabase_client()
+            res = await supabase.table("users").select("id").eq(
+                "discord_id", discord_id
+            ).limit(1).execute()
+
+            if res.data:
+                return str(res.data[0]["id"])
+            return None
+        except Exception as e:
+            logger.warning(f"Could not resolve internal user id for discord_id={discord_id}: {e}")
+            return None
+
     async def get_user_profile(self, discord_id: str) -> Optional[Dict[str, Any]]:
         try:
             supabase = get_supabase_client()
@@ -42,10 +57,14 @@ class UserInfoService:
 
     async def get_user_message_count(self, discord_id: str) -> int:
         try:
+            internal_user_id = await self._get_internal_user_id(discord_id)
+            if not internal_user_id:
+                return 0
+
             supabase = get_supabase_client()
-            res = await supabase.table("message_logs").select(
+            res = await supabase.table("interactions").select(
                 "id", count="exact"
-            ).eq("user_id", discord_id).execute()
+            ).eq("user_id", internal_user_id).execute()
             return res.count or 0
         except Exception as e:
             logger.warning(f"Could not get message count: {e}")
@@ -53,10 +72,14 @@ class UserInfoService:
 
     async def get_last_message(self, discord_id: str) -> Optional[str]:
         try:
+            internal_user_id = await self._get_internal_user_id(discord_id)
+            if not internal_user_id:
+                return None
+
             supabase = get_supabase_client()
-            res = await supabase.table("message_logs").select(
+            res = await supabase.table("interactions").select(
                 "created_at"
-            ).eq("user_id", discord_id).order(
+            ).eq("user_id", internal_user_id).order(
                 "created_at", desc=True
             ).limit(1).execute()
             if res.data:

@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import aiohttp
+from urllib.parse import urlparse
 from datetime import datetime
 from typing import Dict, Any, List
 from dataclasses import dataclass, field
@@ -87,20 +88,40 @@ class HealthCheckService:
 
     async def check_falkordb(self) -> ServiceHealth:
         start = datetime.now()
+        client = None
         try:
-            falkor_url = getattr(settings, 'falkordb_url', 'http://localhost:6379')
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    falkor_url,
-                    timeout=aiohttp.ClientTimeout(total=self.timeout)
-                ) as resp:
-                    latency = (datetime.now() - start).total_seconds() * 1000
-                    return ServiceHealth("FalkorDB", "healthy", round(latency, 2))
+            import redis.asyncio as redis
+
+            falkor_url = getattr(settings, 'falkordb_url', None) or "redis://localhost:6379"
+
+            # Normalize non-redis URLs (e.g., http://localhost:6379) to redis://
+            parsed = urlparse(falkor_url)
+            if parsed.scheme not in ("redis", "rediss"):
+                host = parsed.hostname or "localhost"
+                port = parsed.port or 6379
+                falkor_url = f"redis://{host}:{port}"
+
+            client = redis.from_url(falkor_url, decode_responses=True)
+            pong = await asyncio.wait_for(client.ping(), timeout=self.timeout)
+
+            latency = (datetime.now() - start).total_seconds() * 1000
+            if pong is True or pong == "PONG":
+                return ServiceHealth("FalkorDB", "healthy", round(latency, 2))
+            return ServiceHealth("FalkorDB", "degraded", round(latency, 2), f"Unexpected ping reply: {pong}")
         except asyncio.TimeoutError:
             return ServiceHealth("FalkorDB", "degraded", self.timeout * 1000, "Timeout")
         except Exception as e:
             latency = (datetime.now() - start).total_seconds() * 1000
             return ServiceHealth("FalkorDB", "degraded", round(latency, 2), str(e)[:50])
+        finally:
+            if client is not None:
+                try:
+                    await client.aclose()
+                except Exception:
+                    try:
+                        await client.close()
+                    except Exception:
+                        pass
 
     async def check_gemini_api(self) -> ServiceHealth:
         start = datetime.now()
