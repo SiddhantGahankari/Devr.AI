@@ -1,5 +1,7 @@
 from app.models.database.weaviate import (
     WeaviateUserProfile,
+    WeaviateCodeChunk,
+    WeaviateInteraction,
 )
 from uuid import uuid4
 from datetime import datetime

@@ -1,6 +1,5 @@
 import logging
 import asyncio
-from app.services.vector_db.service import EmbeddingItem, VectorDBService
 import sys
 import os
 from pathlib import Path
@@ -8,6 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
+
+from app.services.vector_db.service import EmbeddingItem, VectorDBService
 
 logging.basicConfig(level=logging.INFO)
 
