@@ -129,6 +129,7 @@ class HealthCheckService:
             self.check_supabase(),
             self.check_rabbitmq(),
             self.check_weaviate(),
+            self.check_falkordb(),
             self.check_gemini_api(),
             return_exceptions=True
         )

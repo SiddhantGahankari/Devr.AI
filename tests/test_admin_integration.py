@@ -1,7 +1,9 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "backend"))
 
 from unittest.mock import Mock, AsyncMock, patch
 import asyncio
@@ -32,12 +34,14 @@ async def test_full_workflow():
     with patch.object(health_service, 'check_supabase', new_callable=AsyncMock) as h1, \
          patch.object(health_service, 'check_rabbitmq', new_callable=AsyncMock) as h2, \
          patch.object(health_service, 'check_weaviate', new_callable=AsyncMock) as h3, \
-         patch.object(health_service, 'check_gemini_api', new_callable=AsyncMock) as h4:
+         patch.object(health_service, 'check_falkordb', new_callable=AsyncMock) as h4, \
+         patch.object(health_service, 'check_gemini_api', new_callable=AsyncMock) as h5:
 
         h1.return_value = ServiceHealth("Supabase", "healthy", 10)
         h2.return_value = ServiceHealth("RabbitMQ", "healthy", 5)
         h3.return_value = ServiceHealth("Weaviate", "healthy", 15)
-        h4.return_value = ServiceHealth("Gemini", "healthy", 100)
+        h4.return_value = ServiceHealth("FalkorDB", "healthy", 12)
+        h5.return_value = ServiceHealth("Gemini", "healthy", 100)
 
         health = await health_service.get_all_health()
         assert health.overall_status == "healthy"

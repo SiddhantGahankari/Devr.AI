@@ -5,6 +5,7 @@ from discord.ext import commands
 
 from integrations.discord.bot import DiscordBot
 from integrations.discord.permissions import require_admin
+from integrations.discord.views import ConfirmActionView
 from app.core.orchestration.queue_manager import AsyncQueueManager
 from app.services.admin import (
     BotStatsService,
@@ -31,6 +32,46 @@ class AdminCommands(commands.GroupCog, name="admin"):
         self.cache_service = CacheService(bot=bot)
         self.user_management_service = UserManagementService(bot=bot, queue_manager=queue_manager)
         super().__init__()
+
+    async def _confirm_action(
+        self,
+        interaction: Interaction,
+        *,
+        title: str,
+        description: str,
+        timeout: float = 30.0,
+    ) -> bool:
+        """Show a confirmation dialog and return True only when confirmed."""
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=discord.Color.orange(),
+        )
+        embed.set_footer(text=f"This action times out in {int(timeout)} seconds.")
+
+        view = ConfirmActionView(timeout=timeout)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await view.wait()
+
+        if view.interaction is None:
+            timeout_embed = discord.Embed(
+                title="Action Timed Out",
+                description="No confirmation received. Operation cancelled.",
+                color=discord.Color.light_grey(),
+            )
+            await interaction.edit_original_response(embed=timeout_embed, view=None)
+            return False
+
+        if not view.confirmed:
+            cancelled_embed = discord.Embed(
+                title="Action Cancelled",
+                description="No changes were made.",
+                color=discord.Color.light_grey(),
+            )
+            await interaction.edit_original_response(embed=cancelled_embed, view=None)
+            return False
+
+        return True
 
     async def cog_command_error(self, interaction: Interaction, error: Exception):
         """Handle errors for admin commands."""
@@ -179,13 +220,30 @@ class AdminCommands(commands.GroupCog, name="admin"):
         reset_verification: bool = False
     ):
         """Reset various aspects of user state."""
-        await interaction.response.defer(ephemeral=True)
-
         if not any([reset_memory, reset_thread, reset_verification]):
-            await interaction.followup.send("Select at least one thing to reset.", ephemeral=True)
+            await interaction.response.send_message("Select at least one thing to reset.", ephemeral=True)
             return
 
         try:
+            actions = []
+            if reset_memory:
+                actions.append("memory")
+            if reset_thread:
+                actions.append("thread")
+            if reset_verification:
+                actions.append("verification")
+
+            confirmed = await self._confirm_action(
+                interaction,
+                title="Confirm User Reset",
+                description=(
+                    f"You are about to reset **{', '.join(actions)}** for {user.mention}.\n"
+                    "This action may be destructive and cannot be fully undone."
+                ),
+            )
+            if not confirmed:
+                return
+
             result = await self.user_management_service.reset_user(
                 user_id=str(user.id),
                 reset_memory=reset_memory,
@@ -207,11 +265,11 @@ class AdminCommands(commands.GroupCog, name="admin"):
             if result.errors:
                 embed.add_field(name="Errors", value="\n".join(result.errors), inline=False)
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.edit_original_response(embed=embed, view=None)
 
         except Exception as e:
             logger.error(f"User reset failed: {e}", exc_info=True)
-            await interaction.followup.send(f"Reset failed: {str(e)}", ephemeral=True)
+            await interaction.edit_original_response(content=f"Reset failed: {str(e)}", embed=None, view=None)
 
     @app_commands.command(name="queue_status", description="Check queue status")
     @require_admin
@@ -268,9 +326,18 @@ class AdminCommands(commands.GroupCog, name="admin"):
     @require_admin
     async def queue_clear(self, interaction: Interaction, priority: str = "all"):
         """Clear stuck messages from queue."""
-        await interaction.response.defer(ephemeral=True)
-
         try:
+            confirmed = await self._confirm_action(
+                interaction,
+                title="Confirm Queue Clear",
+                description=(
+                    f"You are about to clear the **{priority}** queue scope.\n"
+                    "This action is destructive and cannot be undone."
+                ),
+            )
+            if not confirmed:
+                return
+
             cleared = await self.queue_service.clear_queue(priority=priority)
             total = sum(cleared.values())
 
@@ -284,11 +351,11 @@ class AdminCommands(commands.GroupCog, name="admin"):
             embed.add_field(name="Low", value=str(cleared.get("low", 0)), inline=True)
             embed.add_field(name="Total Cleared", value=str(total), inline=False)
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.edit_original_response(embed=embed, view=None)
 
         except Exception as e:
             logger.error(f"Queue clear failed: {e}", exc_info=True)
-            await interaction.followup.send(f"Clear failed: {str(e)}", ephemeral=True)
+            await interaction.edit_original_response(content=f"Clear failed: {str(e)}", embed=None, view=None)
 
     @app_commands.command(name="cache_clear", description="Clear cached data")
     @app_commands.describe(cache_type="What to clear")
@@ -301,9 +368,21 @@ class AdminCommands(commands.GroupCog, name="admin"):
     @require_admin
     async def cache_clear(self, interaction: Interaction, cache_type: str = "all"):
         """Clear various caches."""
-        await interaction.response.defer(ephemeral=True)
-
         try:
+            if cache_type == "all":
+                confirmed = await self._confirm_action(
+                    interaction,
+                    title="Confirm Cache Clear",
+                    description=(
+                        "You are about to clear **all** caches.\n"
+                        "This action may affect active sessions and performance."
+                    ),
+                )
+                if not confirmed:
+                    return
+            else:
+                await interaction.response.defer(ephemeral=True)
+
             cleared = await self.cache_service.clear_cache(cache_type=cache_type)
 
             embed = discord.Embed(
@@ -314,11 +393,17 @@ class AdminCommands(commands.GroupCog, name="admin"):
             for name, count in cleared.items():
                 embed.add_field(name=name.replace("_", " ").title(), value=str(count), inline=True)
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            if cache_type == "all":
+                await interaction.edit_original_response(embed=embed, view=None)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception as e:
             logger.error(f"Cache clear failed: {e}", exc_info=True)
-            await interaction.followup.send(f"Clear failed: {str(e)}", ephemeral=True)
+            if interaction.response.is_done():
+                await interaction.followup.send(f"Clear failed: {str(e)}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Clear failed: {str(e)}", ephemeral=True)
 
 
 async def setup(bot: DiscordBot):

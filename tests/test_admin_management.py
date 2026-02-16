@@ -3,10 +3,10 @@ from unittest.mock import Mock, AsyncMock, patch
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "backend"))
 
-
-print(Path(__file__).parent.parent / "backend" / "app" / "services" / "admin" / "queue_service.py")
 async def test_queue_status():
     from app.services.admin.queue_service import QueueService, FullQueueStatus, QueueStats
 

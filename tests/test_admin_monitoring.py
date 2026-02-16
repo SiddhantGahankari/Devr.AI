@@ -1,7 +1,9 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "backend"))
 
 from unittest.mock import Mock, AsyncMock, patch
 import asyncio
@@ -56,17 +58,19 @@ async def test_health_all_healthy():
     with patch.object(service, 'check_supabase', new_callable=AsyncMock) as m1, \
          patch.object(service, 'check_rabbitmq', new_callable=AsyncMock) as m2, \
          patch.object(service, 'check_weaviate', new_callable=AsyncMock) as m3, \
-         patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m4:
+         patch.object(service, 'check_falkordb', new_callable=AsyncMock) as m4, \
+         patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m5:
 
         m1.return_value = ServiceHealth("Supabase", "healthy", 10)
         m2.return_value = ServiceHealth("RabbitMQ", "healthy", 5)
         m3.return_value = ServiceHealth("Weaviate", "healthy", 15)
-        m4.return_value = ServiceHealth("Gemini", "healthy", 100)
+        m4.return_value = ServiceHealth("FalkorDB", "healthy", 12)
+        m5.return_value = ServiceHealth("Gemini", "healthy", 100)
 
         health = await service.get_all_health()
 
         assert health.overall_status == "healthy"
-        assert len(health.services) == 4
+        assert len(health.services) == 5
         print("PASS: test_health_all_healthy")
 
 
@@ -78,12 +82,14 @@ async def test_health_service_down():
     with patch.object(service, 'check_supabase', new_callable=AsyncMock) as m1, \
          patch.object(service, 'check_rabbitmq', new_callable=AsyncMock) as m2, \
          patch.object(service, 'check_weaviate', new_callable=AsyncMock) as m3, \
-         patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m4:
+         patch.object(service, 'check_falkordb', new_callable=AsyncMock) as m4, \
+         patch.object(service, 'check_gemini_api', new_callable=AsyncMock) as m5:
 
         m1.return_value = ServiceHealth("Supabase", "unhealthy", 0, "Connection failed")
         m2.return_value = ServiceHealth("RabbitMQ", "healthy", 5)
         m3.return_value = ServiceHealth("Weaviate", "healthy", 15)
-        m4.return_value = ServiceHealth("Gemini", "healthy", 100)
+        m4.return_value = ServiceHealth("FalkorDB", "healthy", 12)
+        m5.return_value = ServiceHealth("Gemini", "healthy", 100)
 
         health = await service.get_all_health()
 

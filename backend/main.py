@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.orchestration.agent_coordinator import AgentCoordinator
 from app.core.orchestration.queue_manager import AsyncQueueManager
 from app.database.weaviate.client import get_weaviate_client
+from app.utils.admin_logger import ensure_admin_logs_table
 from integrations.discord.bot import DiscordBot
 from discord.ext import commands
 # DevRel commands are now loaded dynamically (commented out below)
@@ -44,6 +45,11 @@ class DevRAIApplication:
             await self.test_weaviate_connection()
 
             await self.queue_manager.start(num_workers=3)
+
+            if await ensure_admin_logs_table():
+                logger.info("Admin logs table check passed")
+            else:
+                logger.warning("Admin logs table check failed; admin action logs will be skipped")
 
             # --- Load commands inside the async startup function ---
             try:

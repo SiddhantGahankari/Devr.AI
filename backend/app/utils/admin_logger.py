@@ -7,6 +7,30 @@ from app.database.supabase.client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
+_admin_logs_table_ready: Optional[bool] = None
+
+
+async def ensure_admin_logs_table() -> bool:
+    """Check whether the admin_logs table is available in the current environment."""
+    global _admin_logs_table_ready
+
+    if _admin_logs_table_ready is True:
+        return True
+
+    try:
+        supabase = get_supabase_client()
+        await supabase.table("admin_logs").select("id").limit(1).execute()
+        _admin_logs_table_ready = True
+        return True
+    except Exception as e:
+        _admin_logs_table_ready = False
+        logger.error(
+            "admin_logs table is unavailable. Apply migration at "
+            "backend/database/02_create_admin_logs_table.sql. Details: %s",
+            str(e),
+        )
+        return False
+
 
 async def log_admin_action(
     executor_id: str,
@@ -21,6 +45,9 @@ async def log_admin_action(
 ) -> Optional[str]:
     """Log admin command execution to database. Returns log UUID or None if failed."""
     try:
+        if not await ensure_admin_logs_table():
+            return None
+
         supabase = get_supabase_client()
 
         # Validate action_result
