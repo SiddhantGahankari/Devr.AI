@@ -1,13 +1,15 @@
-from sklearn.metrics.pairwise import cosine_similarity
-import unittest
-from app.services.embedding_service.service import EmbeddingService
 import sys
 import os
 from pathlib import Path
 
+from sklearn.metrics.pairwise import cosine_similarity
+import unittest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
+
+from app.services.embedding_service.service import EmbeddingService
 
 
 class TestEmbeddingService(unittest.IsolatedAsyncioTestCase):
