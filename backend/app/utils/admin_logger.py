@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.database.supabase.client import get_supabase_client
@@ -58,7 +58,7 @@ async def log_admin_action(
         # Prepare log entry
         log_entry = {
             "id": str(uuid.uuid4()),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "executor_id": executor_id,
             "executor_username": executor_username,
             "command_name": command_name,

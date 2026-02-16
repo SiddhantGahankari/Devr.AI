@@ -2,7 +2,7 @@ import logging
 import asyncio
 import aiohttp
 from urllib.parse import urlparse
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 from dataclasses import dataclass, field
 
@@ -28,7 +28,7 @@ class SystemHealth:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now().isoformat()
+            self.timestamp = datetime.now(timezone.utc).isoformat()
 
 
 class HealthCheckService:

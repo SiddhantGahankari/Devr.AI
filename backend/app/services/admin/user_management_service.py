@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database.supabase.client import get_supabase_client
 from app.core.orchestration.queue_manager import AsyncQueueManager, QueuePriority
@@ -73,7 +73,7 @@ class UserManagementService:
                 "github_username": None,
                 "is_verified": False,
                 "verification_token": None,
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).eq("discord_id", user_id).execute()
             logger.info(f"Reset verification for user {user_id}")
             return True
