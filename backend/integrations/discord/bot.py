@@ -38,8 +38,17 @@ class DiscordBot(commands.Bot):
         logger.info(f'Enhanced Discord bot logged in as {self.user}')
         print(f'Bot is ready! Logged in as {self.user}')
         try:
+            # Sync globally
             synced = await self.tree.sync()
-            print(f"Synced {len(synced)} slash command(s)")
+            print(f"Synced {len(synced)} global slash command(s)")
+
+            # Also sync to each guild for instant availability
+            for guild in self.guilds:
+                try:
+                    guild_synced = await self.tree.sync(guild=guild)
+                    print(f"Synced {len(guild_synced)} commands to guild {guild.name}")
+                except Exception as e:
+                    print(f"Failed to sync to guild {guild.name}: {e}")
         except Exception as e:
             print(f"Failed to sync slash commands: {e}")
 

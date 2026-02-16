@@ -5,8 +5,8 @@ from discord import Interaction
 import logging
 import inspect
 
-from backend.app.core.config.settings import settings
-from backend.app.utils.admin_logger import log_admin_action
+from app.core.config.settings import settings
+from app.utils.admin_logger import log_admin_action
 
 logger = logging.getLogger(__name__)
 
