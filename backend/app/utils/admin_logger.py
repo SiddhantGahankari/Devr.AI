@@ -23,7 +23,6 @@ async def ensure_admin_logs_table() -> bool:
         _admin_logs_table_ready = True
         return True
     except Exception as e:
-        _admin_logs_table_ready = False
         logger.error(
             "admin_logs table is unavailable. Apply migration at "
             "backend/database/02_create_admin_logs_table.sql. Details: %s",
